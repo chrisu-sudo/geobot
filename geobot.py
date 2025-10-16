@@ -4,136 +4,149 @@ import requests
 import socket
 import subprocess
 import platform
-import re
 import os
 
-# Set up the bot
+# ---- Setup ----
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix='!', intents=intents)
 
+bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
+
+
+# ---- Events ----
 @bot.event
 async def on_ready():
-    print(f'{bot.user} is now running!')
+    print(f"✅ {bot.user} is now online and running on Render!")
 
+
+# ---- IP Lookup ----
 @bot.command(name='iplookup')
-async def ip_lookup(ctx, ip):
-    """Lookup detailed info about an IP address"""
+async def ip_lookup(ctx, ip: str = None):
+    if not ip:
+        await ctx.send("⚠️ Please provide an IP. Example: `!iplookup 8.8.8.8`")
+        return
+
     try:
-        # Validate IP format
-        try:
-            socket.inet_aton(ip)
-        except socket.error:
-            await ctx.send(f"❌ Invalid IP address format: {ip}")
-            return
-        
-        # API request to ip-api.com
-        response = requests.get(f'http://ip-api.com/json/{ip}', timeout=5)
+        socket.inet_aton(ip)
+    except socket.error:
+        await ctx.send(f"❌ Invalid IP format: `{ip}`")
+        return
+
+    try:
+        response = requests.get(f"http://ip-api.com/json/{ip}", timeout=5)
         data = response.json()
-        
-        if data['status'] != 'success':
-            await ctx.send(f"❌ Could not find information for IP: {ip}")
+
+        if data.get("status") != "success":
+            await ctx.send(f"❌ Could not find info for `{ip}`")
             return
-        
-        # Create embed with IP info
-        embed = discord.Embed(title=f"IP Lookup: {ip}", color=discord.Color.blue())
-        embed.add_field(name="Country", value=data.get('country', 'N/A'), inline=True)
-        embed.add_field(name="City", value=data.get('city', 'N/A'), inline=True)
-        embed.add_field(name="Region", value=data.get('regionName', 'N/A'), inline=True)
-        embed.add_field(name="ISP", value=data.get('isp', 'N/A'), inline=False)
-        embed.add_field(name="Latitude", value=data.get('lat', 'N/A'), inline=True)
-        embed.add_field(name="Longitude", value=data.get('lon', 'N/A'), inline=True)
-        embed.add_field(name="Timezone", value=data.get('timezone', 'N/A'), inline=True)
-        embed.add_field(name="Organization", value=data.get('org', 'N/A'), inline=False)
-        
+
+        embed = discord.Embed(title=f"🌍 IP Lookup: {ip}", color=discord.Color.blue())
+        embed.add_field(name="Country", value=data.get("country", "N/A"))
+        embed.add_field(name="City", value=data.get("city", "N/A"))
+        embed.add_field(name="Region", value=data.get("regionName", "N/A"))
+        embed.add_field(name="ISP", value=data.get("isp", "N/A"), inline=False)
+        embed.add_field(name="Timezone", value=data.get("timezone", "N/A"))
+        embed.add_field(name="Org", value=data.get("org", "N/A"), inline=False)
+
         await ctx.send(embed=embed)
+
     except requests.exceptions.Timeout:
-        await ctx.send("❌ Request timed out. Please try again.")
+        await ctx.send("❌ Request timed out.")
     except Exception as e:
-        await ctx.send(f"❌ Error: {str(e)}")
+        await ctx.send(f"❌ Error: `{e}`")
 
-@bot.command(name='ping')
-async def ping_host(ctx, host):
-    """Ping a domain or IP address"""
-    try:
-        # Determine the ping command based on OS
-        param = '-n' if platform.system().lower() == 'windows' else '-c'
-        command = ['ping', param, '4', host]
-        
-        result = subprocess.run(command, capture_output=True, text=True, timeout=10)
-        
-        if result.returncode == 0:
-            # Parse the output to get relevant info
-            lines = result.stdout.split('\n')
-            summary = [line for line in lines if 'min' in line or 'avg' in line or 'max' in line or 'loss' in line]
-            
-            output = f"```\n{result.stdout}\n```" if result.stdout else "Ping successful!"
-            embed = discord.Embed(title=f"Ping: {host}", color=discord.Color.green(), description=output[:2048])
-            await ctx.send(embed=embed)
-        else:
-            await ctx.send(f"❌ Could not ping {host}. Host may be unreachable.")
-    except subprocess.TimeoutExpired:
-        await ctx.send("❌ Ping request timed out.")
-    except Exception as e:
-        await ctx.send(f"❌ Error: {str(e)}")
 
+# ---- DNS ----
 @bot.command(name='dns')
-async def dns_lookup(ctx, domain):
-    """Lookup DNS records for a domain"""
+async def dns_lookup(ctx, domain: str = None):
+    if not domain:
+        await ctx.send("⚠️ Please provide a domain. Example: `!dns example.com`")
+        return
+
     try:
-        # Get IP from domain
         ip = socket.gethostbyname(domain)
-        
-        # Get reverse DNS
         try:
             reverse = socket.gethostbyaddr(ip)[0]
-        except:
+        except socket.herror:
             reverse = "N/A"
-        
-        embed = discord.Embed(title=f"DNS Lookup: {domain}", color=discord.Color.blue())
+
+        embed = discord.Embed(title=f"🔎 DNS Lookup: {domain}", color=discord.Color.blue())
         embed.add_field(name="IP Address", value=ip, inline=False)
         embed.add_field(name="Reverse DNS", value=reverse, inline=False)
-        
         await ctx.send(embed=embed)
+
     except socket.gaierror:
-        await ctx.send(f"❌ Could not resolve domain: {domain}")
+        await ctx.send(f"❌ Could not resolve domain `{domain}`")
     except Exception as e:
-        await ctx.send(f"❌ Error: {str(e)}")
+        await ctx.send(f"❌ Error: `{e}`")
 
-@bot.command(name='traceroute')
-async def traceroute_host(ctx, host):
-    """Traceroute to a host (Windows: tracert, Linux/Mac: traceroute)"""
+
+# ---- Ping ----
+@bot.command(name='ping')
+async def ping_host(ctx, host: str = None):
+    if not host:
+        await ctx.send("⚠️ Please provide a host. Example: `!ping google.com`")
+        return
+
     try:
-        # Determine the traceroute command based on OS
-        cmd = 'tracert' if platform.system().lower() == 'windows' else 'traceroute'
-        command = [cmd, '-w', '2000', host] if platform.system().lower() == 'windows' else [cmd, '-m', '15', host]
-        
-        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
-        
-        if result.returncode == 0:
-            output = result.stdout
-            # Limit to first 2000 characters for Discord embed
-            if len(output) > 2000:
-                output = output[:1997] + "..."
-            
-            embed = discord.Embed(title=f"Traceroute: {host}", color=discord.Color.green(), description=f"```\n{output}\n```")
+        # Render blocks raw ICMP, so we'll simulate ping with requests
+        try:
+            response = requests.get(f"http://{host}", timeout=5)
+            latency = round(response.elapsed.total_seconds() * 1000, 2)
+            embed = discord.Embed(
+                title=f"🏓 HTTP Ping: {host}",
+                description=f"✅ Response in `{latency} ms` (HTTP 200 OK)",
+                color=discord.Color.green(),
+            )
             await ctx.send(embed=embed)
-        else:
-            await ctx.send(f"❌ Traceroute failed for {host}")
-    except subprocess.TimeoutExpired:
-        await ctx.send("❌ Traceroute request timed out.")
-    except Exception as e:
-        await ctx.send(f"❌ Error: {str(e)}")
+        except requests.exceptions.Timeout:
+            await ctx.send(f"❌ Timeout reaching `{host}`")
+        except requests.exceptions.RequestException as e:
+            await ctx.send(f"❌ Unable to reach `{host}` — {str(e)}")
 
+    except Exception as e:
+        await ctx.send(f"❌ Error: `{e}`")
+
+
+# ---- Traceroute ----
+@bot.command(name='traceroute')
+async def traceroute_host(ctx, host: str = None):
+    if not host:
+        await ctx.send("⚠️ Please provide a host. Example: `!traceroute google.com`")
+        return
+
+    try:
+        # Some Render instances restrict traceroute, so this may fail
+        cmd = ['traceroute', '-m', '10', host]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+        output = result.stdout or "No output"
+        if len(output) > 3900:
+            output = output[:3900] + "\n... (truncated)"
+        embed = discord.Embed(
+            title=f"🛰️ Traceroute: {host}",
+            description=f"```\n{output}\n```",
+            color=discord.Color.green(),
+        )
+        await ctx.send(embed=embed)
+    except subprocess.TimeoutExpired:
+        await ctx.send("❌ Traceroute timed out.")
+    except Exception as e:
+        await ctx.send(f"❌ Error: `{e}`")
+
+
+# ---- Help ----
 @bot.command(name='help')
 async def help_command(ctx):
-    """Show all available commands"""
-    embed = discord.Embed(title="IP Bot Commands", color=discord.Color.gold())
-    embed.add_field(name="!iplookup <ip>", value="Get detailed geolocation info about an IP", inline=False)
-    embed.add_field(name="!ping <host>", value="Ping a domain or IP address", inline=False)
-    embed.add_field(name="!dns <domain>", value="Lookup DNS records for a domain", inline=False)
-    embed.add_field(name="!traceroute <host>", value="Traceroute to a host", inline=False)
+    embed = discord.Embed(title="📘 IP Utility Bot Commands", color=discord.Color.gold())
+    embed.add_field(name="!iplookup <ip>", value="Get detailed info about an IP", inline=False)
+    embed.add_field(name="!ping <host>", value="HTTP ping a domain/IP", inline=False)
+    embed.add_field(name="!dns <domain>", value="Lookup DNS records", inline=False)
+    embed.add_field(name="!traceroute <host>", value="Trace network hops to a host", inline=False)
     await ctx.send(embed=embed)
 
-# Run the bot with your token
-bot.run(os.environ['DISCORD_TOKEN'])
+
+# ---- Run Bot ----
+token = os.getenv("DISCORD_TOKEN")
+if not token:
+    raise SystemExit("❌ ERROR: DISCORD_TOKEN environment variable not set on Render.")
+bot.run(token)
